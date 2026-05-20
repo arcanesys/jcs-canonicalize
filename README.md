@@ -62,16 +62,19 @@ let digest = sha256_jcs_hex(&Evidence { host: "host-01".into(), ok: true })?;
 
 | Test file | What it asserts |
 |---|---|
-| `tests/cyberphone_corpus.rs` | All six input/output pairs from the cyberphone reference corpus produce byte-identical canonical output. |
-| `tests/rfc8785_appendix_e.rs` | Hand-coded RFC 8785-style cases (empty containers, numeric-key string sorting, nested sorting, control-char escapes, forward-slash literal, primitives). |
+| `tests/cyberphone_corpus.rs` | All six input/output pairs from the cyberphone reference corpus produce byte-identical canonical output, and every corpus input is a fixed point under re-canonicalization. |
 | `tests/edge_cases.rs` | Non-BMP key sort by UTF-16 code units (not UTF-8 bytes); ECMAScript `Number.toString` boundaries (1e21, 1e-7, 1e20, trailing-zero trimming); negative zero; NaN/Infinity rejection; C0 control escape vs U+007F literal. |
-| `tests/jcs_golden.rs` | A pinned golden input/output pair plus an externally-produced canonical fixture, both asserted byte-identical. Drift = signature contract broken. |
+| `tests/jcs_golden.rs` | A pinned golden input/output pair, an idempotence check, key-reordering invariance, and invalid-JSON rejection. Drift in the golden bytes = signature contract broken. |
 
 If any test in `tests/cyberphone_corpus.rs` fails after a dependency update, **do not release**: the canonicalization bytes have changed and every signature ever produced over the previous bytes is invalidated.
 
 ### Precision contract
 
 RFC 8785 §3.2.2.3 defines numbers to be IEEE 754 double precision. Integers above 2^53 (or below -2^53) are silently rounded to the nearest representable double on the way in. If your input includes such integers, encode them as JSON strings, not as JSON numbers.
+
+### Duplicate-key contract
+
+RFC 8785 §3.2.3 leaves duplicate object keys as undefined behavior. This crate, via the underlying `serde_json` parser and `serde_jcs` serializer, resolves duplicates by **last-value-wins**: `{"a":1,"a":2}` canonicalizes to `{"a":2}` with no warning. If duplicate-key rejection matters to your threat model, validate the input separately before canonicalizing.
 
 ## Use cases
 

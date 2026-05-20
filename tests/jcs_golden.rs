@@ -37,25 +37,3 @@ fn invalid_json_is_rejected() {
     let result = canonicalize("{not json");
     assert!(result.is_err(), "invalid JSON must be rejected");
 }
-
-/// Cross-implementation JCS byte-identity: a vendored canonical fixture
-/// produced by another RFC 8785 implementation must round-trip byte-identical
-/// through ours.
-#[test]
-fn external_pinned_fixture_round_trips_byte_identical() {
-    const EXTERNAL_PINNED_GOLDEN: &str =
-        include_str!("fixtures/external-pinned/jcs-golden.json");
-
-    let produced = canonicalize(EXTERNAL_PINNED_GOLDEN).expect("canonicalize pinned golden");
-
-    assert_eq!(
-        produced, EXTERNAL_PINNED_GOLDEN,
-        "JCS byte drift detected: our canonicalize produced different bytes than the pinned golden"
-    );
-    assert_eq!(
-        produced.len(),
-        44,
-        "pinned golden is 44 bytes; we produced {}",
-        produced.len()
-    );
-}

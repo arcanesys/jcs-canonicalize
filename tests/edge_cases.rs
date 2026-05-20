@@ -56,7 +56,11 @@ fn ecmascript_number_to_string_boundaries() {
             failures.push(format!("input={input} expected={expected} got={got}"));
         }
     }
-    assert!(failures.is_empty(), "number boundary failures:\n{}", failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "number boundary failures:\n{}",
+        failures.join("\n")
+    );
 }
 
 /// Negative zero is serialized as `0` (RFC 8785 §3.2.2.3, mirroring ES
