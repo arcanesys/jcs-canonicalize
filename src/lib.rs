@@ -1,7 +1,8 @@
 #![allow(clippy::doc_lazy_continuation)]
-//! JCS canonicalization (RFC 8785). LOADBEARING: every signer and verifier
-//! routes through here - do not reimplement, drift invalidates signatures
-//! fleet-wide.
+//! JCS canonicalization (RFC 8785). The byte sequence produced here is the
+//! contract that downstream signatures verify against: any drift in output
+//! invalidates every signature ever produced over the previous bytes. Treat
+//! the canonical output as a stable, versioned format.
 
 use anyhow::{Context, Result};
 use serde::Serialize;
