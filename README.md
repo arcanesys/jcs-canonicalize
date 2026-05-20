@@ -1,8 +1,28 @@
 # jcs-canonicalize
 
-A CLI tool and Rust library for [RFC 8785](https://datatracker.ietf.org/doc/html/rfc8785) JSON canonicalization (JCS).
+A CLI tool and small Rust library for [RFC 8785](https://datatracker.ietf.org/doc/html/rfc8785) JSON canonicalization (JCS).
 
 RFC 8785 defines a deterministic byte representation for JSON values: the same input always produces the same bytes, regardless of key order, whitespace, or number formatting. That property is what lets a cryptographic signature over those bytes verify reliably across implementations, languages, and time.
+
+## What this is, and what it is not
+
+This crate is a thin packaging on top of [`serde_jcs`](https://crates.io/crates/serde_jcs) (the de facto JCS implementation in Rust). It adds:
+
+- A standalone `jcs-canonicalize` CLI binary suitable for shell pipelines and packaged distribution (crates.io, nixpkgs).
+- A `sha256_jcs_hex` helper for the common "canonicalize then SHA-256" pattern used in signed evidence and content-addressed stores.
+- A conformance test suite that exercises the [cyberphone/json-canonicalization](https://github.com/cyberphone/json-canonicalization) reference corpus (vendored under `tests/fixtures/cyberphone-corpus/`, Apache-2.0), the RFC 8785 Appendix-E-style examples, and targeted edge cases (non-BMP UTF-16 key sort, ECMAScript `Number.toString` boundaries, C0 control escaping, NaN/Infinity rejection).
+
+The actual canonicalization engine — UTF-16-ordered keys, ryu-js number formatting, escape rules — lives in `serde_jcs`. The correctness of this crate is the correctness of `serde_jcs`, verified by the test suite below.
+
+## Alternatives
+
+If you do not need the CLI, consider depending on one of these libraries directly:
+
+- [`serde_jcs`](https://crates.io/crates/serde_jcs) — what this crate wraps. The most-downloaded RFC 8785 implementation on crates.io.
+- [`canon-json`](https://crates.io/crates/canon-json) — RFC 8785 as a `serde_json` Formatter, maintained by the [`containers`](https://github.com/containers) organization.
+- [`json-canon`](https://crates.io/crates/json-canon) — older, stable RFC 8785 serializer.
+
+The reference implementation, used to generate the conformance test vectors, is [cyberphone/json-canonicalization](https://github.com/cyberphone/json-canonicalization) (Go, Java, JavaScript, Python, .NET).
 
 ## CLI
 
@@ -13,11 +33,9 @@ echo '{"b":2,"a":1}' | jcs-canonicalize
 # {"a":1,"b":2}
 ```
 
-Round-trip is a fixed point: canonicalizing canonical output yields the same bytes.
+Canonicalizing canonical output is a fixed point — running the CLI twice produces the same bytes.
 
 ## Library
-
-Two public functions:
 
 ```rust
 pub fn canonicalize(input: &str) -> anyhow::Result<String>;
@@ -38,19 +56,26 @@ let digest = sha256_jcs_hex(&Evidence { host: "host-01".into(), ok: true })?;
 // 64-char lowercase hex SHA-256
 ```
 
-## Conformance
+## Conformance and trust
 
-The repository ships:
+`cargo test` runs every contract this crate claims to honor:
 
-- An RFC 8785 Appendix E conformance test suite (`tests/rfc8785_appendix_e.rs`).
-- A golden-file test (`tests/jcs_golden.rs`) that asserts byte-identical output across releases. Drift in this file means the canonicalization contract changed and existing signatures over old outputs no longer verify.
-- A library-level idempotence test: `canonicalize(canonicalize(x)) == canonicalize(x)`.
+| Test file | What it asserts |
+|---|---|
+| `tests/cyberphone_corpus.rs` | All six input/output pairs from the cyberphone reference corpus produce byte-identical canonical output. |
+| `tests/rfc8785_appendix_e.rs` | Hand-coded RFC 8785-style cases (empty containers, numeric-key string sorting, nested sorting, control-char escapes, forward-slash literal, primitives). |
+| `tests/edge_cases.rs` | Non-BMP key sort by UTF-16 code units (not UTF-8 bytes); ECMAScript `Number.toString` boundaries (1e21, 1e-7, 1e20, trailing-zero trimming); negative zero; NaN/Infinity rejection; C0 control escape vs U+007F literal. |
+| `tests/jcs_golden.rs` | A pinned golden input/output pair plus an externally-produced canonical fixture, both asserted byte-identical. Drift = signature contract broken. |
 
-`cargo test` runs the full suite (10 tests).
+If any test in `tests/cyberphone_corpus.rs` fails after a dependency update, **do not release**: the canonicalization bytes have changed and every signature ever produced over the previous bytes is invalidated.
+
+### Precision contract
+
+RFC 8785 §3.2.2.3 defines numbers to be IEEE 754 double precision. Integers above 2^53 (or below -2^53) are silently rounded to the nearest representable double on the way in. If your input includes such integers, encode them as JSON strings, not as JSON numbers.
 
 ## Use cases
 
-Anywhere a signature over JSON needs to verify across implementations or across time. Examples:
+Anywhere a signature over JSON needs to verify across implementations or across time:
 
 - **Signed audit evidence** in compliance and attestation workflows.
 - **JWS detached signatures** with JSON payloads where key ordering must be deterministic.
@@ -72,12 +97,10 @@ cargo install jcs-canonicalize
 nix run nixpkgs#jcs-canonicalize -- < input.json
 ```
 
-(Pending nixpkgs upstream merge.)
-
 ## Origin
 
-Extracted from [arcanesys/nixfleet](https://github.com/arcanesys/nixfleet), where it serves the signed compliance evidence chain for regulated NixOS estates. The functionality is generic RFC 8785; the NixFleet consumption is one use case among many.
+Extracted from [arcanesys/nixfleet](https://github.com/arcanesys/nixfleet), where it serves the signed compliance-evidence chain for regulated NixOS estates. The functionality is generic RFC 8785; the NixFleet consumption is one use case among many.
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See `LICENSE`. The vendored cyberphone corpus under `tests/fixtures/cyberphone-corpus/` is Apache-2.0; see the `LICENSE` and `NOTICE.md` files in that directory.
